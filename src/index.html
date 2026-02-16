@@ -26,6 +26,17 @@
     <button id="btn-reset" class="btn-secondary">Reset</button>
   </div>
 
+  <!-- Time Range Selector -->
+  <div id="time-range-panel">
+    <label>
+      <select id="start-hour-select"></select>
+    </label>
+    <span class="range-separator">~</span>
+    <label>
+      <select id="end-hour-select"></select>
+    </label>
+  </div>
+
   <!-- Time Grid -->
   <div id="grid-container">
     <div id="time-grid"></div>
@@ -35,6 +46,11 @@
   <div id="output-section">
     <textarea id="output-text" readonly placeholder="Select time slots above..."></textarea>
     <button id="btn-copy" class="btn-primary">Copy to Clipboard</button>
+  </div>
+
+  <!-- Help -->
+  <div id="help-bar">
+    Click: select | Drag: range select | Shift+Click: before | Ctrl+Click: after | Long press+Arrow: up/down | Header: all day
   </div>
 
   <script src="main.js"></script>

@@ -109,6 +109,38 @@ body {
   border-color: #c7c7cc;
 }
 
+/* Time Range Panel */
+#time-range-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f9f9fb;
+  border-bottom: 1px solid #e5e5ea;
+  flex-shrink: 0;
+}
+
+#time-range-panel select {
+  padding: 4px 6px;
+  border: 1px solid #d1d1d6;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #fff;
+  color: #1d1d1f;
+  outline: none;
+}
+
+#time-range-panel select:focus {
+  border-color: #007aff;
+}
+
+.range-separator {
+  font-size: 13px;
+  color: #6e6e73;
+  font-weight: 600;
+}
+
 /* Grid Container */
 #grid-container {
   flex: 1;
@@ -172,6 +204,12 @@ body {
   font-weight: 600;
 }
 
+.grid-cell.long-pressed {
+  background: #ff9500;
+  color: #fff;
+  font-weight: 600;
+}
+
 .grid-corner {
   background: #f2f2f7;
 }
@@ -226,4 +264,15 @@ body {
 
 .btn-primary.copied {
   background: #34c759;
+}
+
+/* Help Bar */
+#help-bar {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: #e8e8ed;
+  font-size: 9px;
+  color: #8e8e93;
+  text-align: center;
+  line-height: 1.4;
 }

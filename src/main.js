@@ -4,16 +4,21 @@ let dates = [];
 let isDragging = false;
 let dragMode = null; // 'select' or 'deselect'
 
-const START_HOUR = 9;
-const END_HOUR = 21;
+let startHour = 9;
+let endHour = 21;
 const DAYS_COUNT = 7;
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+
+let longPressTimer = null;
+let longPressCell = null;
+const LONG_PRESS_MS = 500;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   initDates();
-  renderGrid();
+  initTimeRangeSelectors();
   loadSettings();
+  renderGrid();
   setupEventListeners();
   updateOutput();
 });
@@ -33,10 +38,51 @@ function initDates() {
   }
 }
 
+// Initialize time range selectors (0:00 ~ 24:00)
+function initTimeRangeSelectors() {
+  const startSelect = document.getElementById('start-hour-select');
+  const endSelect = document.getElementById('end-hour-select');
+
+  for (let h = 0; h <= 23; h++) {
+    const opt = document.createElement('option');
+    opt.value = h;
+    opt.textContent = `${h}:00`;
+    startSelect.appendChild(opt);
+  }
+
+  for (let h = 1; h <= 24; h++) {
+    const opt = document.createElement('option');
+    opt.value = h;
+    opt.textContent = `${h}:00`;
+    endSelect.appendChild(opt);
+  }
+
+  startSelect.value = startHour;
+  endSelect.value = endHour;
+
+  startSelect.addEventListener('change', onTimeRangeChange);
+  endSelect.addEventListener('change', onTimeRangeChange);
+}
+
+// Handle time range change
+function onTimeRangeChange() {
+  const newStart = parseInt(document.getElementById('start-hour-select').value);
+  const newEnd = parseInt(document.getElementById('end-hour-select').value);
+
+  if (newStart >= newEnd) return;
+
+  startHour = newStart;
+  endHour = newEnd;
+  saveSettings();
+  renderGrid();
+  updateOutput();
+}
+
 // Render the time grid
 function renderGrid() {
   const grid = document.getElementById('time-grid');
-  const hours = END_HOUR - START_HOUR;
+  grid.innerHTML = '';
+  const hours = endHour - startHour;
   grid.style.gridTemplateColumns = `44px repeat(${DAYS_COUNT}, 1fr)`;
   grid.style.gridTemplateRows = `auto repeat(${hours}, 1fr)`;
 
@@ -45,16 +91,18 @@ function renderGrid() {
   corner.className = 'grid-corner grid-header';
   grid.appendChild(corner);
 
-  // Date headers
+  // Date headers (clickable to toggle all day)
   dates.forEach(d => {
     const header = document.createElement('div');
     header.className = 'grid-header date-header' + (d.isToday ? ' today' : '');
     header.textContent = d.display;
+    header.style.cursor = 'pointer';
+    header.addEventListener('click', () => toggleAllDay(d.full));
     grid.appendChild(header);
   });
 
   // Time rows
-  for (let h = START_HOUR; h < END_HOUR; h++) {
+  for (let h = startHour; h < endHour; h++) {
     // Time label
     const timeLabel = document.createElement('div');
     timeLabel.className = 'grid-header time-header';
@@ -71,10 +119,40 @@ function renderGrid() {
 
       cell.addEventListener('mousedown', (e) => {
         e.preventDefault();
+
+        if (e.shiftKey) {
+          selectRange(d.full, startHour, h);
+          isDragging = false;
+          return;
+        }
+
+        if (e.ctrlKey || e.metaKey) {
+          selectRange(d.full, h, endHour - 1);
+          isDragging = false;
+          return;
+        }
+
+        // Start long press detection
+        longPressCell = { date: d.full, hour: h };
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          // Long press activated: wait for arrow key
+          isDragging = false;
+          cell.classList.add('long-pressed');
+        }, LONG_PRESS_MS);
+
         isDragging = true;
         const isSelected = cell.classList.contains('selected');
         dragMode = isSelected ? 'deselect' : 'select';
         toggleCell(cell);
+      });
+
+      cell.addEventListener('mouseup', () => {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+        cell.classList.remove('long-pressed');
       });
 
       cell.addEventListener('mouseenter', () => {
@@ -83,14 +161,57 @@ function renderGrid() {
         }
       });
 
+      // Restore selection state
+      if (selectedSlots[d.full] && selectedSlots[d.full].includes(h)) {
+        cell.classList.add('selected');
+      }
+
       grid.appendChild(cell);
     });
   }
+}
 
-  document.addEventListener('mouseup', () => {
-    isDragging = false;
-    dragMode = null;
-  });
+// Toggle all hours for a given date (all day)
+function toggleAllDay(date) {
+  const allSelected = selectedSlots[date] && selectedSlots[date].length === (endHour - startHour);
+
+  if (allSelected) {
+    // Deselect all
+    delete selectedSlots[date];
+    document.querySelectorAll(`.grid-cell[data-date="${date}"]`).forEach(cell => {
+      cell.classList.remove('selected');
+    });
+  } else {
+    // Select all
+    selectRange(date, startHour, endHour - 1);
+  }
+
+  updateOutput();
+}
+
+// Check if a date has all hours selected
+function isAllDay(date) {
+  if (!selectedSlots[date]) return false;
+  for (let h = startHour; h < endHour; h++) {
+    if (!selectedSlots[date].includes(h)) return false;
+  }
+  return true;
+}
+
+// Select a range of hours for a given date
+function selectRange(date, fromHour, toHour) {
+  if (!selectedSlots[date]) selectedSlots[date] = [];
+
+  for (let h = fromHour; h <= toHour; h++) {
+    if (!selectedSlots[date].includes(h)) {
+      selectedSlots[date].push(h);
+    }
+    const cell = document.querySelector(`.grid-cell[data-date="${date}"][data-hour="${h}"]`);
+    if (cell) cell.classList.add('selected');
+  }
+
+  selectedSlots[date].sort((a, b) => a - b);
+  updateOutput();
 }
 
 // Toggle a cell based on drag mode
@@ -156,16 +277,19 @@ function generateText(template) {
   sortedDates.forEach(date => {
     const hours = selectedSlots[date];
     if (!hours || hours.length === 0) return;
-    const ranges = mergeHours(hours);
-    const timeStrs = ranges.map(r => `${r.start}:00\u301C${r.end}:00`);
     const dateDisplay = formatDate(date);
+    const allDay = isAllDay(date);
+    const timeStr = allDay ? '\u7D42\u65E5' : (() => {
+      const ranges = mergeHours(hours);
+      return ranges.map(r => `${r.start}:00\u301C${r.end}:00`).join(template === 'simple' ? ', ' : ' / ');
+    })();
 
     if (template === 'simple') {
-      lines.push(`${dateDisplay} ${timeStrs.join(', ')}`);
+      lines.push(`${dateDisplay} ${timeStr}`);
     } else if (template === 'polite') {
-      lines.push(`- ${dateDisplay} ${timeStrs.join(' / ')}`);
+      lines.push(`- ${dateDisplay} ${timeStr}`);
     } else if (template === 'business') {
-      lines.push(`  ${dateDisplay} ${timeStrs.join(' / ')}`);
+      lines.push(`  ${dateDisplay} ${timeStr}`);
     }
   });
 
@@ -188,6 +312,39 @@ function updateOutput() {
 
 // Setup event listeners
 function setupEventListeners() {
+  // Mouse up (once)
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    dragMode = null;
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    // Clear long-pressed state after a short delay (allow keydown to fire first)
+    setTimeout(() => {
+      document.querySelectorAll('.long-pressed').forEach(c => c.classList.remove('long-pressed'));
+      longPressCell = null;
+    }, 300);
+  });
+
+  // Arrow keys after long press
+  document.addEventListener('keydown', (e) => {
+    if (!longPressCell) return;
+    const { date, hour } = longPressCell;
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectRange(date, startHour, hour);
+      longPressCell = null;
+      document.querySelectorAll('.long-pressed').forEach(c => c.classList.remove('long-pressed'));
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectRange(date, hour, endHour - 1);
+      longPressCell = null;
+      document.querySelectorAll('.long-pressed').forEach(c => c.classList.remove('long-pressed'));
+    }
+  });
+
   // Template change
   document.getElementById('template-select').addEventListener('change', () => {
     updateOutput();
@@ -224,17 +381,9 @@ async function copyToClipboard() {
   const btn = document.getElementById('btn-copy');
 
   try {
-    if (window.__TAURI__) {
-      const { writeText } = window.__TAURI__.clipboardManager || {};
-      if (writeText) {
-        await writeText(text);
-      } else {
-        // Fallback: try dynamic import
-        const { writeText: write } = await import('@tauri-apps/plugin-clipboard-manager');
-        await write(text);
-      }
+    if (window.__TAURI__ && window.__TAURI__.clipboardManager) {
+      await window.__TAURI__.clipboardManager.writeText(text);
     } else {
-      // Fallback for browser testing
       await navigator.clipboard.writeText(text);
     }
 
@@ -246,22 +395,19 @@ async function copyToClipboard() {
     }, 1500);
   } catch (err) {
     console.error('Failed to copy:', err);
-    // Last resort fallback
-    try {
-      await navigator.clipboard.writeText(text);
-      btn.textContent = 'Copied!';
-      btn.classList.add('copied');
-      setTimeout(() => {
-        btn.textContent = 'Copy to Clipboard';
-        btn.classList.remove('copied');
-      }, 1500);
-    } catch (e) {
-      btn.textContent = 'Copy Failed';
-      setTimeout(() => {
-        btn.textContent = 'Copy to Clipboard';
-      }, 1500);
-    }
+    btn.textContent = 'Copy Failed';
+    setTimeout(() => {
+      btn.textContent = 'Copy to Clipboard';
+    }, 1500);
   }
+}
+
+// Get Tauri window object
+function getTauriWindow() {
+  if (window.__TAURI__ && window.__TAURI__.window) {
+    return window.__TAURI__.window.getCurrentWindow();
+  }
+  return null;
 }
 
 // Toggle always on top
@@ -270,18 +416,10 @@ async function toggleAlwaysOnTop() {
   const btn = document.getElementById('btn-pin');
 
   try {
-    if (window.__TAURI__) {
-      const { getCurrentWindow } = window.__TAURI__.window || {};
-      if (getCurrentWindow) {
-        const appWindow = getCurrentWindow();
-        isPinned = !isPinned;
-        await appWindow.setAlwaysOnTop(isPinned);
-      } else {
-        const { getCurrentWindow: getCW } = await import('@tauri-apps/api/window');
-        const appWindow = getCW();
-        isPinned = !isPinned;
-        await appWindow.setAlwaysOnTop(isPinned);
-      }
+    const appWindow = getTauriWindow();
+    if (appWindow) {
+      isPinned = !isPinned;
+      await appWindow.setAlwaysOnTop(isPinned);
     } else {
       isPinned = !isPinned;
     }
@@ -296,14 +434,9 @@ async function toggleAlwaysOnTop() {
 // Close window
 async function closeWindow() {
   try {
-    if (window.__TAURI__) {
-      const { getCurrentWindow } = window.__TAURI__.window || {};
-      if (getCurrentWindow) {
-        await getCurrentWindow().close();
-      } else {
-        const { getCurrentWindow: getCW } = await import('@tauri-apps/api/window');
-        await getCW().close();
-      }
+    const appWindow = getTauriWindow();
+    if (appWindow) {
+      await appWindow.close();
     } else {
       window.close();
     }
@@ -317,6 +450,8 @@ async function closeWindow() {
 function saveSettings() {
   const template = document.getElementById('template-select').value;
   localStorage.setItem('timegrid-template', template);
+  localStorage.setItem('timegrid-start-hour', startHour);
+  localStorage.setItem('timegrid-end-hour', endHour);
 }
 
 // Load settings from localStorage
@@ -324,5 +459,18 @@ function loadSettings() {
   const template = localStorage.getItem('timegrid-template');
   if (template) {
     document.getElementById('template-select').value = template;
+  }
+
+  const savedStart = localStorage.getItem('timegrid-start-hour');
+  const savedEnd = localStorage.getItem('timegrid-end-hour');
+  if (savedStart !== null && savedEnd !== null) {
+    const s = parseInt(savedStart);
+    const e = parseInt(savedEnd);
+    if (s < e && s >= 0 && e <= 24) {
+      startHour = s;
+      endHour = e;
+      document.getElementById('start-hour-select').value = startHour;
+      document.getElementById('end-hour-select').value = endHour;
+    }
   }
 }
