@@ -6,7 +6,8 @@ let dragMode = null; // 'select' or 'deselect'
 
 let startHour = 9;
 let endHour = 21;
-const DAYS_COUNT = 7;
+let startDateStr = ''; // '' = today
+let endDateStr = '';   // '' = today+6
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 let longPressTimer = null;
@@ -15,27 +16,75 @@ const LONG_PRESS_MS = 500;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-  initDates();
   initTimeRangeSelectors();
+  initDateSelectors();
   loadSettings();
+  initDates();
   renderGrid();
   setupEventListeners();
   updateOutput();
 });
 
-// Generate dates for 1 week starting from today
+// Generate dates from startDateStr to endDateStr (inclusive)
 function initDates() {
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const base = startDateStr ? new Date(startDateStr + 'T00:00:00') : new Date(today);
+  const end = endDateStr ? new Date(endDateStr + 'T00:00:00') : (() => {
+    const d = new Date(base);
+    d.setDate(base.getDate() + 6);
+    return d;
+  })();
+
   dates = [];
-  for (let i = 0; i < DAYS_COUNT; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    const month = d.getMonth() + 1;
-    const day = d.getDate();
-    const dow = DAY_NAMES[d.getDay()];
-    const full = `${d.getFullYear()}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    dates.push({ full, display: `${month}/${day}(${dow})`, isToday: i === 0 });
+  const cur = new Date(base);
+  while (cur <= end && dates.length < 60) {
+    const month = cur.getMonth() + 1;
+    const day = cur.getDate();
+    const dow = DAY_NAMES[cur.getDay()];
+    const full = `${cur.getFullYear()}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const isToday = cur.getTime() === today.getTime();
+    dates.push({ full, display: `${month}/${day}(${dow})`, isToday });
+    cur.setDate(cur.getDate() + 1);
   }
+}
+
+// Initialize date selectors
+function initDateSelectors() {
+  const startInput = document.getElementById('start-date-input');
+  const endInput = document.getElementById('end-date-input');
+
+  const today = new Date();
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  startInput.value = fmt(today);
+  const endDefault = new Date(today);
+  endDefault.setDate(today.getDate() + 6);
+  endInput.value = fmt(endDefault);
+
+  startInput.addEventListener('change', onDateChange);
+  endInput.addEventListener('change', onDateChange);
+}
+
+// Handle date range change
+function onDateChange() {
+  const startInput = document.getElementById('start-date-input');
+  const endInput = document.getElementById('end-date-input');
+
+  startDateStr = startInput.value || '';
+  endDateStr = endInput.value || '';
+
+  // end must be >= start
+  if (startDateStr && endDateStr && endDateStr < startDateStr) {
+    endInput.value = startDateStr;
+    endDateStr = startDateStr;
+  }
+
+  selectedSlots = {};
+  saveSettings();
+  initDates();
+  renderGrid();
+  updateOutput();
 }
 
 // Initialize time range selectors (0:00 ~ 24:00)
@@ -83,7 +132,7 @@ function renderGrid() {
   const grid = document.getElementById('time-grid');
   grid.innerHTML = '';
   const hours = endHour - startHour;
-  grid.style.gridTemplateColumns = `44px repeat(${DAYS_COUNT}, 1fr)`;
+  grid.style.gridTemplateColumns = `44px repeat(${dates.length}, 1fr)`;
   grid.style.gridTemplateRows = `auto repeat(${hours}, 1fr)`;
 
   // Corner cell
@@ -452,6 +501,8 @@ function saveSettings() {
   localStorage.setItem('timegrid-template', template);
   localStorage.setItem('timegrid-start-hour', startHour);
   localStorage.setItem('timegrid-end-hour', endHour);
+  localStorage.setItem('timegrid-start-date', startDateStr);
+  localStorage.setItem('timegrid-end-date', endDateStr);
 }
 
 // Load settings from localStorage
@@ -472,5 +523,16 @@ function loadSettings() {
       document.getElementById('start-hour-select').value = startHour;
       document.getElementById('end-hour-select').value = endHour;
     }
+  }
+
+  const savedStartDate = localStorage.getItem('timegrid-start-date');
+  const savedEndDate = localStorage.getItem('timegrid-end-date');
+  if (savedStartDate) {
+    startDateStr = savedStartDate;
+    document.getElementById('start-date-input').value = savedStartDate;
+  }
+  if (savedEndDate) {
+    endDateStr = savedEndDate;
+    document.getElementById('end-date-input').value = savedEndDate;
   }
 }
